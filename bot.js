@@ -24,9 +24,10 @@ const { Rcon } = require('rcon-client');
 const fs = require('fs');
 
 function buildJoinUrl(host, port) {
-  const steamConnect = `steam://connect/${host}:${port}`;
   // Discord link buttons only allow http/https/discord protocols.
-  return `https://steamcommunity.com/linkfilter/?url=${encodeURIComponent(steamConnect)}`;
+  // Open a trusted HTTPS page that immediately redirects to steam://connect.
+  const addr = `${host}:${port}`;
+  return `https://cdn.jsdelivr.net/gh/beaudenison/cs2-server-play-button@main/join.html?addr=${encodeURIComponent(addr)}`;
 }
 
 // ── Persistence (stores server config + live message refs per guild) ────────

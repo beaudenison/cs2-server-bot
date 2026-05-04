@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# When piped through curl | bash, stdin is the pipe not the terminal.
+# Reconnect stdin to the actual TTY so interactive prompts work.
+exec < /dev/tty
+
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 GREEN='\033[0;32m'

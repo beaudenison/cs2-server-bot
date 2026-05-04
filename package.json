@@ -1,0 +1,16 @@
+{
+  "name": "cs2-server-play-button",
+  "version": "1.0.0",
+  "description": "Discord bot with a CS2 server status embed and one-click join button",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "@discordjs/rest": "^2.4.3",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0",
+    "gamedig": "^4.5.1",
+    "inquirer": "^8.2.6"
+  }
+}

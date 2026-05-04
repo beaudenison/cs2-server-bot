@@ -1,0 +1,12 @@
+services:
+  cs2-bot:
+    image: ghcr.io/beaudenison/cs2-server-play-button:latest
+    container_name: cs2-play-button
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - cs2bot_data:/data
+
+volumes:
+  cs2bot_data:

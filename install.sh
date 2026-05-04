@@ -34,24 +34,21 @@ info()    { echo -e "${YELLOW}  ➜  $1${RESET}"; }
 success() { echo -e "\n${GREEN}${BOLD}✔  $1${RESET}"; }
 
 ask() {
-  local answer
-  echo -en "\n${BOLD}$1${RESET} "
-  read -r answer < /dev/tty
-  echo "$answer"
+  # Write prompt directly to terminal, read answer directly from terminal
+  echo -en "\n${BOLD}$1${RESET} " > /dev/tty
+  read -r REPLY < /dev/tty
 }
 
 ask_secret() {
-  local password
-  echo -en "\n${BOLD}$1${RESET} "
-  read -rs password < /dev/tty
-  echo ""
-  echo "$password"
+  echo -en "\n${BOLD}$1${RESET} " > /dev/tty
+  read -rs REPLY < /dev/tty
+  echo "" > /dev/tty
 }
 
 confirm() {
   local ans
   while true; do
-    echo -en "\n${BOLD}$1 [Y/n]${RESET} "
+    echo -en "\n${BOLD}$1 [Y/n]${RESET} " > /dev/tty
     read -r ans < /dev/tty
     case "$ans" in
       ""|y|Y|yes|YES) return ;;
@@ -79,9 +76,10 @@ else
 
   APP_ID=""
   while true; do
-    APP_ID=$(ask "Paste your Application ID:")
+    ask "Paste your Application ID:"
+    APP_ID="$REPLY"
     if echo "$APP_ID" | grep -qE '^[0-9]{17,20}$'; then break; fi
-    echo -e "${RED}  ✗  Should be 17-20 digits. Try again.${RESET}"
+    echo -e "${RED}  ✗  Should be 17-20 digits. Try again.${RESET}" > /dev/tty
   done
 
   # ── Step 2 ───────────────────────────────────────────────────────────────
@@ -92,9 +90,10 @@ else
 
   TOKEN=""
   while true; do
-    TOKEN=$(ask_secret "Paste your Bot Token (input hidden):")
+    ask_secret "Paste your Bot Token (input hidden):"
+    TOKEN="$REPLY"
     if [ ${#TOKEN} -gt 20 ]; then break; fi
-    echo -e "${RED}  ✗  Token looks too short — double-check it.${RESET}"
+    echo -e "${RED}  ✗  Token looks too short — double-check it.${RESET}" > /dev/tty
   done
 
   # ── Step 3 ───────────────────────────────────────────────────────────────

@@ -26,17 +26,14 @@ No cloning required. Everything runs from a pre-built Docker image.
 ## Setup — one command
 
 ```bash
-docker run -it --name cs2-play-button --restart unless-stopped -v cs2bot_data:/data ghcr.io/beaudenison/cs2-server-play-button:latest
+curl -fsSL https://raw.githubusercontent.com/beaudenison/cs2-server-play-button/main/install.sh | bash
 ```
 
-Docker pulls the image and immediately launches an interactive wizard that will:
-
-1. Walk you through creating a Discord Application at <https://discord.com/developers/applications>
-2. Prompt for your **Application ID** and **Bot Token**
-3. Explain how to enable required intents
-4. Generate a one-click invite URL to add the bot to your server
-
-After the wizard the bot starts automatically inside the same container. Your credentials are saved in the `cs2bot_data` Docker volume — the wizard won't appear again on restarts.
+That's it. The script will:
+1. Pull the Docker image automatically
+2. Launch an interactive wizard that walks you through creating your Discord bot
+3. Prompt for your **Application ID** and **Bot Token**
+4. Start the bot
 
 ---
 
@@ -65,7 +62,7 @@ Hit **Submit** — the live status panel is posted immediately.
 ## Updating
 
 ```bash
-docker stop cs2-play-button && docker rm cs2-play-button
-docker pull ghcr.io/beaudenison/cs2-server-play-button:latest
-docker run -it --name cs2-play-button --restart unless-stopped -v cs2bot_data:/data ghcr.io/beaudenison/cs2-server-play-button:latest
+curl -fsSL https://raw.githubusercontent.com/beaudenison/cs2-server-play-button/main/install.sh | bash
 ```
+
+Your credentials and server config are preserved in the Docker volume.

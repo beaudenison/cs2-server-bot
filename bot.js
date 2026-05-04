@@ -262,31 +262,22 @@ client.on('interactionCreate', async (interaction) => {
       .setCustomId('cs2_setup_modal')
       .setTitle('CS2 Server Setup');
 
-    const ipInput = new TextInputBuilder()
-      .setCustomId('cs2_host')
-      .setLabel('Server IP Address')
+    const addressInput = new TextInputBuilder()
+      .setCustomId('cs2_address')
+      .setLabel('Server Address (IP:PORT)')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('e.g.  123.45.67.89')
-      .setRequired(true);
-
-    const portInput = new TextInputBuilder()
-      .setCustomId('cs2_port')
-      .setLabel('Server Port')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Default CS2 port is 27015')
-      .setValue('27015')
+      .setPlaceholder('e.g. 123.45.67.89:27015')
       .setRequired(true);
 
     const rconInput = new TextInputBuilder()
       .setCustomId('cs2_rcon')
-      .setLabel('RCON Password (stored locally, never shared)')
+      .setLabel('RCON Password (required)')
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Leave blank if not using RCON')
-      .setRequired(false);
+      .setPlaceholder('Your CS2 server RCON password')
+      .setRequired(true);
 
     modal.addComponents(
-      new ActionRowBuilder().addComponents(ipInput),
-      new ActionRowBuilder().addComponents(portInput),
+      new ActionRowBuilder().addComponents(addressInput),
       new ActionRowBuilder().addComponents(rconInput),
     );
 
@@ -299,13 +290,32 @@ client.on('interactionCreate', async (interaction) => {
     interaction.type === InteractionType.ModalSubmit &&
     interaction.customId === 'cs2_setup_modal'
   ) {
-    const host = interaction.fields.getTextInputValue('cs2_host').trim();
-    const port = interaction.fields.getTextInputValue('cs2_port').trim();
+    const address = interaction.fields.getTextInputValue('cs2_address').trim();
     const rcon = interaction.fields.getTextInputValue('cs2_rcon').trim();
+
+    const addressMatch = address.match(/^(.+):(\d{1,5})$/);
+    if (!addressMatch) {
+      await interaction.reply({
+        content: '❌  Invalid server address. Use format IP:PORT (example: 123.45.67.89:27015).',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const host = addressMatch[1].trim();
+    const port = addressMatch[2].trim();
 
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
       await interaction.reply({
         content: '❌  Invalid port number. Must be between 1 and 65535.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (!rcon) {
+      await interaction.reply({
+        content: '❌  RCON password is required.',
         flags: MessageFlags.Ephemeral,
       });
       return;

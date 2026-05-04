@@ -94,21 +94,34 @@ async function queryServer(host, port) {
 }
 
 function parseRconStatus(statusText, host, port) {
-  const hostnameMatch = statusText.match(/hostname\s*:\s*(.+)/i);
-  const mapMatch = statusText.match(/map\s*:\s*([^\s]+)/i);
-  const playersMatch = statusText.match(/players\s*:\s*(\d+)\s*humans?.*?\((\d+)\s*max\)/i);
+  // Strip ANSI escape codes/control chars some servers include in RCON output.
+  const clean = String(statusText || '')
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/\r/g, '');
+
+  const hostnameMatch = clean.match(/hostname\s*:\s*(.+)/i);
+  const mapMatch = clean.match(/map\s*:\s*([^\s]+)/i);
+
+  const playersMaxMatch =
+    clean.match(/players\s*:\s*(\d+)\s*humans?.*?\((\d+)\s*max\)/i) ||
+    clean.match(/players\s*:\s*(\d+)\s*\((\d+)\s*max\)/i) ||
+    clean.match(/players\s*:\s*(\d+)\s*\/\s*(\d+)/i);
+
+  // Fallback: count scoreboard lines like "# 2 123456... playername ..."
+  const scoreboardPlayers = (clean.match(/^#\s+\d+\s+\d+/gm) || []).length;
 
   const name = hostnameMatch?.[1]?.trim() || `CS2 Server (${host}:${port})`;
   const map = mapMatch?.[1]?.trim() || 'Unknown Map';
-  const players = playersMatch ? Number(playersMatch[1]) : 0;
-  const maxPlayers = playersMatch ? Number(playersMatch[2]) : 0;
+  const players = playersMaxMatch ? Number(playersMaxMatch[1]) : scoreboardPlayers;
+  const maxPlayers = playersMaxMatch ? Number(playersMaxMatch[2]) : 0;
 
   return {
     name,
     map,
     players,
     maxPlayers,
-    raw: { source: 'rcon', statusText },
+    raw: { source: 'rcon', statusText: clean },
   };
 }
 
@@ -154,7 +167,6 @@ function buildServerEmbed(info, host, port) {
     .setTitle('🖥️  CS2 Server Status')
     .setColor(0x00b300)
     .addFields(
-      { name: '🌐  Server Address', value: `${host}:${port}`, inline: false },
       { name: '🏷️  Server Name', value: info.name, inline: false },
       { name: '🗺️  Map', value: info.map, inline: true },
       {
@@ -182,7 +194,6 @@ function buildOfflineEmbed(host, port) {
     .setTitle('🖥️  CS2 Server Status')
     .setColor(0xff0000)
     .setDescription('❌  Server is offline or unreachable.')
-    .addFields({ name: '🌐  Server Address', value: `${host}:${port}`, inline: false })
     .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 

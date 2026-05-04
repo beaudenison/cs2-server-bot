@@ -41,8 +41,7 @@ ask() {
 
 ask_secret() {
   echo -en "\n${BOLD}$1${RESET} " > /dev/tty
-  read -rs REPLY < /dev/tty
-  echo "" > /dev/tty
+  read -r REPLY < /dev/tty
 }
 
 confirm() {

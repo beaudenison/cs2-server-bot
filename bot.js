@@ -46,29 +46,34 @@ function saveData(data) {
 // ── Query a CS2 server via Source query protocol ────────────────────────────
 async function queryServer(host, port) {
   const queryPort = Number(port);
+  const portsToTry = [queryPort, queryPort + 1];
+  const typesToTry = ['cs2', 'csgo'];
   let result;
+  let lastError;
 
-  // Some CS2 servers respond better under different game identifiers.
-  try {
-    result = await GameDig.query({
-      type: 'cs2',
-      host,
-      port: queryPort,
-      requestRules: false,
-      socketTimeout: 3000,
-      attemptTimeout: 5000,
-      maxAttempts: 2,
-    });
-  } catch {
-    result = await GameDig.query({
-      type: 'csgo',
-      host,
-      port: queryPort,
-      requestRules: false,
-      socketTimeout: 3000,
-      attemptTimeout: 5000,
-      maxAttempts: 2,
-    });
+  // Some providers expose query on game port + 1, and some respond only to csgo type.
+  for (const gameType of typesToTry) {
+    for (const p of portsToTry) {
+      try {
+        result = await GameDig.query({
+          type: gameType,
+          host,
+          port: p,
+          requestRules: false,
+          socketTimeout: 3000,
+          attemptTimeout: 5000,
+          maxAttempts: 2,
+        });
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    if (result) break;
+  }
+
+  if (!result) {
+    throw lastError || new Error('Server query failed');
   }
 
   const players = Array.isArray(result.players)
@@ -95,6 +100,7 @@ function buildServerEmbed(info, host, port) {
     .setTitle('🖥️  CS2 Server Status')
     .setColor(0x00b300)
     .addFields(
+      { name: '🌐  Server Address', value: `${host}:${port}`, inline: false },
       { name: '🏷️  Server Name', value: info.name, inline: false },
       { name: '🗺️  Map', value: info.map, inline: true },
       {
@@ -103,7 +109,7 @@ function buildServerEmbed(info, host, port) {
         inline: true,
       },
     )
-    .setFooter({ text: `${host}:${port}  •  Updates every 30 seconds` })
+    .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 
   const joinButton = new ButtonBuilder()
@@ -122,7 +128,8 @@ function buildOfflineEmbed(host, port) {
     .setTitle('🖥️  CS2 Server Status')
     .setColor(0xff0000)
     .setDescription('❌  Server is offline or unreachable.')
-    .setFooter({ text: `${host}:${port}  •  Updates every 30 seconds` })
+    .addFields({ name: '🌐  Server Address', value: `${host}:${port}`, inline: false })
+    .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 
   const joinButton = new ButtonBuilder()
@@ -265,7 +272,8 @@ client.on('interactionCreate', async (interaction) => {
     try {
       serverInfo = await queryServer(host, port);
       payload = buildServerEmbed(serverInfo, host, port);
-    } catch {
+    } catch (err) {
+      console.error(`Initial server query failed for ${host}:${port}:`, err?.message || err);
       payload = buildOfflineEmbed(host, port);
     }
 

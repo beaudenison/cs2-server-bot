@@ -89,7 +89,7 @@ else
 
   TOKEN=""
   while true; do
-    ask_secret "Paste your Bot Token (input hidden):"
+    ask_secret "Paste your Bot Token:"
     TOKEN="$REPLY"
     if [ ${#TOKEN} -gt 20 ]; then break; fi
     echo -e "${RED}  ✗  Token looks too short — double-check it.${RESET}" > /dev/tty

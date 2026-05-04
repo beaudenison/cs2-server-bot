@@ -1,8 +1,4 @@
 #!/bin/bash
-set -e
-
-# When piped via curl | bash, stdin is the pipe. Reconnect to the real terminal.
-exec < /dev/tty
 
 CYAN='\033[0;36m'
 BOLD='\033[1m'
@@ -11,6 +7,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
 RESET='\033[0m'
+
+# Reconnect stdin to the real terminal when piped via curl | bash
+# Non-fatal: if /dev/tty isn't available we continue anyway
+exec < /dev/tty 2>/dev/null || true
 
 echo -e "
 ${BOLD}${CYAN}╔═══════════════════════════════════════════════════╗
@@ -40,14 +40,14 @@ success() { echo -e "\n${GREEN}${BOLD}✔  $1${RESET}"; }
 ask() {
   local answer
   echo -en "\n${BOLD}$1${RESET} "
-  read -r answer
+  read -r answer < /dev/tty
   echo "$answer"
 }
 
 ask_secret() {
   local password
   echo -en "\n${BOLD}$1${RESET} "
-  read -rs password
+  read -rs password < /dev/tty
   echo ""
   echo "$password"
 }
@@ -56,7 +56,7 @@ confirm() {
   local ans
   while true; do
     echo -en "\n${BOLD}$1 [Y/n]${RESET} "
-    read -r ans
+    read -r ans < /dev/tty
     case "$ans" in
       ""|y|Y|yes|YES) return ;;
     esac
@@ -64,8 +64,12 @@ confirm() {
 }
 
 # ── Check if already configured ───────────────────────────────────────────────
-EXISTING_TOKEN=$(docker run --rm -v "${VOLUME}:/data" alpine \
-  sh -c 'grep -s DISCORD_TOKEN /data/.env | cut -d= -f2' 2>/dev/null || echo "")
+TMPDIR_CHECK=$(mktemp -d)
+docker volume create "$VOLUME" &>/dev/null
+docker run --rm -v "${VOLUME}:/data" -v "${TMPDIR_CHECK}:/out" alpine \
+  sh -c 'cp /data/.env /out/.env 2>/dev/null || true' 2>/dev/null || true
+EXISTING_TOKEN=$(grep -s 'DISCORD_TOKEN' "${TMPDIR_CHECK}/.env" | cut -d= -f2)
+rm -rf "$TMPDIR_CHECK"
 
 if [ -n "$EXISTING_TOKEN" ]; then
   echo -e "${GREEN}${BOLD}✔  Existing configuration found — skipping wizard.${RESET}"
@@ -113,17 +117,20 @@ else
   info "Select your server and click Authorise."
   confirm "Bot has been invited?"
 
-  # ── Save credentials into the named volume ────────────────────────────────
-  docker volume create "$VOLUME" &>/dev/null
-  printf 'DISCORD_TOKEN=%s\nDISCORD_APP_ID=%s\n' "$TOKEN" "$APP_ID" | \
-    docker run --rm -i -v "${VOLUME}:/data" alpine \
-    sh -c 'cat > /data/.env && chmod 600 /data/.env'
+  # ── Save credentials to a host temp file then copy into volume ────────────
+  TMPENV=$(mktemp)
+  printf 'DISCORD_TOKEN=%s\nDISCORD_APP_ID=%s\n' "$TOKEN" "$APP_ID" > "$TMPENV"
+  docker run --rm \
+    -v "${VOLUME}:/data" \
+    -v "${TMPENV}:/tmp/env_input:ro" \
+    alpine sh -c 'cp /tmp/env_input /data/.env && chmod 600 /data/.env'
+  rm -f "$TMPENV"
 
   success "Credentials saved!"
 fi
 
-# ── Pull & start the bot ──────────────────────────────────────────────────────
-echo -e "${YELLOW}  ➜  Pulling latest image...${RESET}"
+# ── Pull & start ──────────────────────────────────────────────────────────────
+echo -e "\n${YELLOW}  ➜  Pulling latest image...${RESET}"
 docker pull "$IMAGE"
 
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then

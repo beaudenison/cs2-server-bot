@@ -207,6 +207,41 @@ function buildOfflineEmbed(host, port, joinUrl) {
   return { embeds: [embed], components: [row] };
 }
 
+function buildSetupModal() {
+  const modal = new ModalBuilder()
+    .setCustomId('cs2_setup_modal')
+    .setTitle('CS2 Server Setup');
+
+  const addressInput = new TextInputBuilder()
+    .setCustomId('cs2_address')
+    .setLabel('Server Address (IP:PORT)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('e.g. 123.45.67.89:27015')
+    .setRequired(true);
+
+  const rconInput = new TextInputBuilder()
+    .setCustomId('cs2_rcon')
+    .setLabel('RCON Password (required)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('Your CS2 server RCON password')
+    .setRequired(true);
+
+  const joinLinkInput = new TextInputBuilder()
+    .setCustomId('cs2_join_link')
+    .setLabel('Join Link URL (required)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('Paste your Dub short link (https://...)')
+    .setRequired(true);
+
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(addressInput),
+    new ActionRowBuilder().addComponents(rconInput),
+    new ActionRowBuilder().addComponents(joinLinkInput),
+  );
+
+  return modal;
+}
+
 // ── Slash command definition ─────────────────────────────────────────────────
 const commands = [
   new SlashCommandBuilder()
@@ -266,40 +301,31 @@ function startRefreshLoop() {
 // ── Interaction handler ──────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
   try {
+  // ── Open setup modal button ──────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId === 'open_setup_modal') {
+    await interaction.showModal(buildSetupModal());
+    return;
+  }
+
   // ── /setup command → show modal ──────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
-    const modal = new ModalBuilder()
-      .setCustomId('cs2_setup_modal')
-      .setTitle('CS2 Server Setup');
+    const openButton = new ButtonBuilder()
+      .setCustomId('open_setup_modal')
+      .setLabel('Open Setup Form')
+      .setStyle(ButtonStyle.Primary);
 
-    const addressInput = new TextInputBuilder()
-      .setCustomId('cs2_address')
-      .setLabel('Server Address (IP:PORT)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('e.g. 123.45.67.89:27015')
-      .setRequired(true);
+    const row = new ActionRowBuilder().addComponents(openButton);
 
-    const rconInput = new TextInputBuilder()
-      .setCustomId('cs2_rcon')
-      .setLabel('RCON Password (required)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Your CS2 server RCON password')
-      .setRequired(true);
-
-    const joinLinkInput = new TextInputBuilder()
-      .setCustomId('cs2_join_link')
-      .setLabel('Join Link URL (required)')
-      .setStyle(TextInputStyle.Short)
-      .setPlaceholder('Create at app.dub.co -> destination: steam://run/730//+connect IP:PORT')
-      .setRequired(true);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(addressInput),
-      new ActionRowBuilder().addComponents(rconInput),
-      new ActionRowBuilder().addComponents(joinLinkInput),
-    );
-
-    await interaction.showModal(modal);
+    await interaction.reply({
+      content:
+        'Before filling Join Link URL:\n' +
+        '1) Go to https://app.dub.co and create a short link.\n' +
+        '2) Destination must be: steam://run/730//+connect <IP:PORT>\n' +
+        '3) Example destination: steam://run/730//+connect 138.199.12.132:26632\n\n' +
+        'Click **Open Setup Form** below.',
+      flags: MessageFlags.Ephemeral,
+      components: [row],
+    });
     return;
   }
 

@@ -16,11 +16,17 @@ const {
   ButtonBuilder,
   ButtonStyle,
   InteractionType,
+  MessageFlags,
 } = require('discord.js');
 
 const { GameDig } = require('gamedig');
 const fs = require('fs');
-const path = require('path');
+
+function buildJoinUrl(host, port) {
+  const steamConnect = `steam://connect/${host}:${port}`;
+  // Discord link buttons only allow http/https/discord protocols.
+  return `https://steamcommunity.com/linkfilter/?url=${encodeURIComponent(steamConnect)}`;
+}
 
 // ── Persistence (stores server config + live message refs per guild) ────────
 const DATA_FILE = '/data/data.json';
@@ -56,7 +62,7 @@ async function queryServer(host, port) {
 
 // ── Build the live server status embed ──────────────────────────────────────
 function buildServerEmbed(info, host, port) {
-  const connectUrl = `steam://connect/${host}:${port}`;
+  const connectUrl = buildJoinUrl(host, port);
 
   const embed = new EmbedBuilder()
     .setTitle('🖥️  CS2 Server Status')
@@ -95,7 +101,7 @@ function buildOfflineEmbed(host, port) {
   const joinButton = new ButtonBuilder()
     .setLabel('🔴  Server Offline')
     .setStyle(ButtonStyle.Link)
-    .setURL(`steam://connect/${host}:${port}`)
+    .setURL(buildJoinUrl(host, port))
     .setDisabled(true);
 
   const row = new ActionRowBuilder().addComponents(joinButton);
@@ -114,7 +120,7 @@ const commands = [
 // ── Bot client ───────────────────────────────────────────────────────────────
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`✅  Logged in as ${client.user.tag}`);
 
   // Register slash commands globally
@@ -161,6 +167,7 @@ function startRefreshLoop() {
 
 // ── Interaction handler ──────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
+  try {
   // ── /setup command → show modal ──────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
     const modal = new ModalBuilder()
@@ -211,12 +218,12 @@ client.on('interactionCreate', async (interaction) => {
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
       await interaction.reply({
         content: '❌  Invalid port number. Must be between 1 and 65535.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Fetch the channel explicitly — interaction.channel can be null from a modal
     const channel = interaction.channel ?? await client.channels.fetch(interaction.channelId);
@@ -254,12 +261,26 @@ client.on('interactionCreate', async (interaction) => {
         '✅  Setup complete! The server status panel has been posted above and will refresh every 30 seconds.',
     });
   }
+  } catch (err) {
+    console.error('Interaction handler error:', err);
+    if (interaction.isRepliable()) {
+      const payload = {
+        content: '❌  Something went wrong while processing setup. Check bot logs and try again.',
+        flags: MessageFlags.Ephemeral,
+      };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(payload).catch(() => {});
+      } else {
+        await interaction.reply(payload).catch(() => {});
+      }
+    }
+  }
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
-  console.error('❌  DISCORD_TOKEN is not set. Run `npm run install-bot` first.');
+  console.error('❌  DISCORD_TOKEN is not set. Run the install script first.');
   process.exit(1);
 }
 

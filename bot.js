@@ -24,7 +24,7 @@ const { Rcon } = require('rcon-client');
 const fs = require('fs');
 
 function buildJoinUrl(host, port) {
-  return 'https://dub.sh/commsCS2';
+  return 'https://app.dub.co';
 }
 
 // ── Persistence (stores server config + live message refs per guild) ────────
@@ -158,18 +158,17 @@ async function queryServerWithFallback(host, port, rconPassword) {
 }
 
 // ── Build the live server status embed ──────────────────────────────────────
-function buildServerEmbed(info, host, port) {
-  const connectUrl = buildJoinUrl(host, port);
+function buildServerEmbed(info, host, port, joinUrl) {
+  const connectUrl = joinUrl || buildJoinUrl(host, port);
 
   const embed = new EmbedBuilder()
     .setTitle('🖥️  CS2 Server Status')
     .setColor(0x00b300)
     .addFields(
       { name: '🏷️  Server Name', value: info.name, inline: false },
-      { name: '🗺️  Map', value: info.map, inline: true },
       {
-        name: '👥  Players',
-        value: `${info.players} / ${info.maxPlayers}`,
+        name: '👥  Total Players',
+        value: `${info.players}`,
         inline: true,
       },
     )
@@ -187,8 +186,8 @@ function buildServerEmbed(info, host, port) {
 }
 
 // ── Build an offline embed ───────────────────────────────────────────────────
-function buildOfflineEmbed(host, port) {
-  const connectUrl = buildJoinUrl(host, port);
+function buildOfflineEmbed(host, port, joinUrl) {
+  const connectUrl = joinUrl || buildJoinUrl(host, port);
 
   const embed = new EmbedBuilder()
     .setTitle('🖥️  CS2 Server Status')
@@ -252,9 +251,9 @@ function startRefreshLoop() {
         let payload;
         try {
           const info = await queryServerWithFallback(config.host, config.port, config.rcon || null);
-          payload = buildServerEmbed(info, config.host, config.port);
+          payload = buildServerEmbed(info, config.host, config.port, config.joinUrl || null);
         } catch {
-          payload = buildOfflineEmbed(config.host, config.port);
+          payload = buildOfflineEmbed(config.host, config.port, config.joinUrl || null);
         }
         await message.edit(payload);
       } catch (err) {
@@ -287,9 +286,17 @@ client.on('interactionCreate', async (interaction) => {
       .setPlaceholder('Your CS2 server RCON password')
       .setRequired(true);
 
+    const joinLinkInput = new TextInputBuilder()
+      .setCustomId('cs2_join_link')
+      .setLabel('Join Link URL (required)')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Create at app.dub.co -> destination: steam://run/730//+connect IP:PORT')
+      .setRequired(true);
+
     modal.addComponents(
       new ActionRowBuilder().addComponents(addressInput),
       new ActionRowBuilder().addComponents(rconInput),
+      new ActionRowBuilder().addComponents(joinLinkInput),
     );
 
     await interaction.showModal(modal);
@@ -303,6 +310,7 @@ client.on('interactionCreate', async (interaction) => {
   ) {
     const address = interaction.fields.getTextInputValue('cs2_address').trim();
     const rcon = interaction.fields.getTextInputValue('cs2_rcon').trim();
+    const joinUrl = interaction.fields.getTextInputValue('cs2_join_link').trim();
 
     const addressMatch = address.match(/^(.+):(\d{1,5})$/);
     if (!addressMatch) {
@@ -332,6 +340,14 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    if (!/^https:\/\/.+/i.test(joinUrl)) {
+      await interaction.reply({
+        content: '❌  Join link must be an HTTPS URL. Create one at https://app.dub.co with destination: steam://run/730//+connect <IP:PORT>.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Fetch the channel explicitly — interaction.channel can be null from a modal
@@ -346,10 +362,10 @@ client.on('interactionCreate', async (interaction) => {
     let payload;
     try {
       serverInfo = await queryServerWithFallback(host, port, rcon || null);
-      payload = buildServerEmbed(serverInfo, host, port);
+      payload = buildServerEmbed(serverInfo, host, port, joinUrl);
     } catch (err) {
       console.error(`Initial server query failed for ${host}:${port}:`, err?.message || err);
-      payload = buildOfflineEmbed(host, port);
+      payload = buildOfflineEmbed(host, port, joinUrl);
     }
 
     // Send the public status embed in the same channel
@@ -361,6 +377,7 @@ client.on('interactionCreate', async (interaction) => {
       host,
       port: Number(port),
       rcon: rcon || null,
+      joinUrl,
       channelId: interaction.channelId,
       messageId: statusMessage.id,
     };

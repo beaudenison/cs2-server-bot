@@ -323,7 +323,7 @@ client.on('interactionCreate', async (interaction) => {
         '2) Destination must be: steam://run/730//+connect <IP:PORT>\n' +
         '3) Example destination: steam://run/730//+connect 123.45.67.89:27015\n\n' +
         'Click **Open Setup Form** below.',
-      flags: MessageFlags.Ephemeral,
+      flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds,
       components: [row],
     });
     return;
@@ -369,7 +369,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!/^https:\/\/.+/i.test(joinUrl)) {
       await interaction.reply({
         content: '❌  Join link must be an HTTPS URL. Create one at https://app.dub.co with destination: steam://run/730//+connect <IP:PORT>.',
-        flags: MessageFlags.Ephemeral,
+        flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds,
       });
       return;
     }

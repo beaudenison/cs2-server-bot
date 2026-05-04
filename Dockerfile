@@ -9,6 +9,7 @@ RUN npm ci --omit=dev
 # Copy source
 COPY . .
 
-RUN chmod +x entrypoint.sh
+# Ensure Unix line endings and executable bit regardless of host OS
+RUN sed -i 's/\r//' entrypoint.sh && chmod +x entrypoint.sh
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "./entrypoint.sh"]

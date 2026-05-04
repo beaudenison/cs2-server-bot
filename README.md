@@ -23,46 +23,27 @@ No cloning required. Everything runs from a pre-built Docker image.
 
 ---
 
-## Setup — two steps, one command
-
-### Step 1 — Copy this `docker-compose.yml` anywhere on your machine
-
-```yaml
-services:
-  cs2-bot:
-    image: ghcr.io/beaudenison/cs2-server-play-button:latest
-    container_name: cs2-play-button
-    restart: unless-stopped
-    stdin_open: true
-    tty: true
-    volumes:
-      - cs2bot_data:/data
-
-volumes:
-  cs2bot_data:
-```
-
-### Step 2 — Run the setup wizard
+## Setup — one command
 
 ```bash
-docker compose run --rm cs2-bot
+docker run -it --name cs2-play-button --restart unless-stopped -v cs2bot_data:/data ghcr.io/beaudenison/cs2-server-play-button:latest
 ```
 
-Docker pulls the image and launches an interactive wizard that will:
+Docker pulls the image and immediately launches an interactive wizard that will:
 
 1. Walk you through creating a Discord Application at <https://discord.com/developers/applications>
 2. Prompt for your **Application ID** and **Bot Token**
 3. Explain how to enable required intents
 4. Generate a one-click invite URL to add the bot to your server
 
-After finishing the wizard the bot starts automatically. Your credentials are saved in a named Docker volume — the wizard won't appear again.
+After the wizard the bot starts automatically inside the same container. Your credentials are saved in the `cs2bot_data` Docker volume — the wizard won't appear again on restarts.
 
 ---
 
-## Running after initial setup
+## Running after a reboot / restart
 
 ```bash
-docker compose up -d
+docker start cs2-play-button
 ```
 
 ---
@@ -84,5 +65,7 @@ Hit **Submit** — the live status panel is posted immediately.
 ## Updating
 
 ```bash
-docker compose pull && docker compose up -d
+docker stop cs2-play-button && docker rm cs2-play-button
+docker pull ghcr.io/beaudenison/cs2-server-play-button:latest
+docker run -it --name cs2-play-button --restart unless-stopped -v cs2bot_data:/data ghcr.io/beaudenison/cs2-server-play-button:latest
 ```

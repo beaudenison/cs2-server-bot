@@ -18,7 +18,7 @@ const {
   InteractionType,
 } = require('discord.js');
 
-const GameDig = require('gamedig');
+const { GameDig } = require('gamedig');
 const fs = require('fs');
 const path = require('path');
 

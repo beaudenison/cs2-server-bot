@@ -45,17 +45,44 @@ function saveData(data) {
 
 // ── Query a CS2 server via Source query protocol ────────────────────────────
 async function queryServer(host, port) {
-  const result = await GameDig.query({
-    type: 'cs2',
-    host,
-    port: Number(port),
-    requestRules: false,
-  });
+  const queryPort = Number(port);
+  let result;
+
+  // Some CS2 servers respond better under different game identifiers.
+  try {
+    result = await GameDig.query({
+      type: 'cs2',
+      host,
+      port: queryPort,
+      requestRules: false,
+      socketTimeout: 3000,
+      attemptTimeout: 5000,
+      maxAttempts: 2,
+    });
+  } catch {
+    result = await GameDig.query({
+      type: 'csgo',
+      host,
+      port: queryPort,
+      requestRules: false,
+      socketTimeout: 3000,
+      attemptTimeout: 5000,
+      maxAttempts: 2,
+    });
+  }
+
+  const players = Array.isArray(result.players)
+    ? result.players.length
+    : Number(result.numplayers ?? result?.raw?.numplayers ?? 0);
+  const maxPlayers = Number(
+    result.maxplayers ?? result.maxPlayers ?? result?.raw?.maxplayers ?? 0,
+  );
+
   return {
-    name: result.name,
-    map: result.map,
-    players: result.players.length,
-    maxPlayers: result.maxplayers,
+    name: String(result.name || result?.raw?.name || 'Unknown Server'),
+    map: String(result.map || result?.raw?.map || 'Unknown Map'),
+    players: Number.isFinite(players) ? players : 0,
+    maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : 0,
     raw: result,
   };
 }

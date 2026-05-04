@@ -112,7 +112,7 @@ const commands = [
 ];
 
 // ── Bot client ───────────────────────────────────────────────────────────────
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 
 client.once('ready', async () => {
   console.log(`✅  Logged in as ${client.user.tag}`);
@@ -218,6 +218,13 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.deferReply({ ephemeral: true });
 
+    // Fetch the channel explicitly — interaction.channel can be null from a modal
+    const channel = interaction.channel ?? await client.channels.fetch(interaction.channelId);
+    if (!channel) {
+      await interaction.editReply({ content: '❌  Could not find the channel. Please try again.' });
+      return;
+    }
+
     // Query the server
     let serverInfo;
     let payload;
@@ -229,7 +236,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // Send the public status embed in the same channel
-    const statusMessage = await interaction.channel.send(payload);
+    const statusMessage = await channel.send(payload);
 
     // Persist config for this guild
     const data = loadData();

@@ -77,9 +77,9 @@ else
   APP_ID=""
   while true; do
     ask "Paste your Application ID:"
-    APP_ID="$REPLY"
+    APP_ID="${REPLY//[[:space:]]/}"  # strip all whitespace/carriage returns
     if echo "$APP_ID" | grep -qE '^[0-9]{17,20}$'; then break; fi
-    echo -e "${RED}  ✗  Should be 17-20 digits. Try again.${RESET}" > /dev/tty
+    echo -e "${RED}  ✗  Got \"${APP_ID}\" — should be 17-20 digits only. Try again.${RESET}" > /dev/tty
   done
 
   # ── Step 2 ───────────────────────────────────────────────────────────────

@@ -321,7 +321,7 @@ client.on('interactionCreate', async (interaction) => {
         'Before filling Join Link URL:\n' +
         '1) Go to https://app.dub.co and create a short link.\n' +
         '2) Destination must be: steam://run/730//+connect <IP:PORT>\n' +
-        '3) Example destination: steam://run/730//+connect 138.199.12.132:26632\n\n' +
+        '3) Example destination: steam://run/730//+connect 123.45.67.89:27015\n\n' +
         'Click **Open Setup Form** below.',
       flags: MessageFlags.Ephemeral,
       components: [row],

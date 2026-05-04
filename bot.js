@@ -24,10 +24,7 @@ const { Rcon } = require('rcon-client');
 const fs = require('fs');
 
 function buildJoinUrl(host, port) {
-  // Discord link buttons only allow http/https/discord protocols.
-  // Open a trusted HTTPS page that immediately redirects to steam://connect.
-  const addr = `${host}:${port}`;
-  return `https://rawcdn.githack.com/beaudenison/cs2-server-play-button/main/join.html?addr=${encodeURIComponent(addr)}`;
+  return `steam://run/730//+connect ${host}:${port}`;
 }
 
 // ── Persistence (stores server config + live message refs per guild) ────────
@@ -162,8 +159,6 @@ async function queryServerWithFallback(host, port, rconPassword) {
 
 // ── Build the live server status embed ──────────────────────────────────────
 function buildServerEmbed(info, host, port) {
-  const connectUrl = buildJoinUrl(host, port);
-
   const embed = new EmbedBuilder()
     .setTitle('🖥️  CS2 Server Status')
     .setColor(0x00b300)
@@ -181,8 +176,8 @@ function buildServerEmbed(info, host, port) {
 
   const joinButton = new ButtonBuilder()
     .setLabel('🟢  Join Server')
-    .setStyle(ButtonStyle.Link)
-    .setURL(connectUrl);
+    .setStyle(ButtonStyle.Success)
+    .setCustomId(`join_server|${host}|${port}`);
 
   const row = new ActionRowBuilder().addComponents(joinButton);
 
@@ -200,8 +195,8 @@ function buildOfflineEmbed(host, port) {
 
   const joinButton = new ButtonBuilder()
     .setLabel('🔴  Server Offline')
-    .setStyle(ButtonStyle.Link)
-    .setURL(buildJoinUrl(host, port))
+    .setStyle(ButtonStyle.Secondary)
+    .setCustomId(`join_server|${host}|${port}`)
     .setDisabled(true);
 
   const row = new ActionRowBuilder().addComponents(joinButton);
@@ -268,6 +263,19 @@ function startRefreshLoop() {
 // ── Interaction handler ──────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
   try {
+  // ── Join button → send direct Steam URL ─────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith('join_server|')) {
+    const parts = interaction.customId.split('|');
+    const host = parts[1];
+    const port = parts[2];
+    const steamUrl = buildJoinUrl(host, port);
+    await interaction.reply({
+      content: `${steamUrl}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   // ── /setup command → show modal ──────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
     const modal = new ModalBuilder()

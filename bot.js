@@ -15,6 +15,8 @@ const {
   EmbedBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  PermissionsBitField,
   InteractionType,
   MessageFlags,
 } = require('discord.js');
@@ -26,6 +28,29 @@ const fs = require('fs');
 function buildJoinUrl(host, port) {
   return 'https://app.dub.co';
 }
+
+const MAP_OPTIONS = [
+  { label: 'Ancient', value: 'de_ancient' },
+  { label: 'Anubis', value: 'de_anubis' },
+  { label: 'Dust II', value: 'de_dust2' },
+  { label: 'Inferno', value: 'de_inferno' },
+  { label: 'Mirage', value: 'de_mirage' },
+  { label: 'Nuke', value: 'de_nuke' },
+  { label: 'Overpass', value: 'de_overpass' },
+  { label: 'Train', value: 'de_train' },
+  { label: 'Vertigo', value: 'de_vertigo' },
+  { label: 'Office', value: 'cs_office' },
+  { label: 'Italy', value: 'cs_italy' },
+];
+
+const GAME_MODE_PRESETS = {
+  casual: { gameType: 0, gameMode: 0, label: 'Casual' },
+  competitive: { gameType: 0, gameMode: 1, label: 'Competitive' },
+  wingman: { gameType: 0, gameMode: 2, label: 'Wingman' },
+  deathmatch: { gameType: 1, gameMode: 2, label: 'Deathmatch' },
+  armsrace: { gameType: 1, gameMode: 0, label: 'Arms Race' },
+  demolition: { gameType: 1, gameMode: 1, label: 'Demolition' },
+};
 
 // ── Persistence (stores server config + live message refs per guild) ────────
 const DATA_FILE = '/data/data.json';
@@ -157,6 +182,103 @@ async function queryServerWithFallback(host, port, rconPassword) {
   }
 }
 
+async function runRconCommand(config, command) {
+  if (!config?.host || !config?.port || !config?.rcon) {
+    throw new Error('Server config or RCON password is missing. Run /setup again.');
+  }
+
+  const rcon = await Rcon.connect({
+    host: config.host,
+    port: Number(config.port),
+    password: config.rcon,
+    timeout: 5000,
+  });
+
+  try {
+    return await rcon.send(command);
+  } finally {
+    await rcon.end().catch(() => {});
+  }
+}
+
+function buildControlRows(joinUrl, controlsDisabled) {
+  const joinButton = new ButtonBuilder()
+    .setLabel(controlsDisabled ? '🔴  Server Offline' : '🟢  Join Server')
+    .setStyle(ButtonStyle.Link)
+    .setURL(joinUrl)
+    .setDisabled(controlsDisabled);
+
+  const modeButton = new ButtonBuilder()
+    .setCustomId('cs2_game_mode_button')
+    .setLabel('Game Mode')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(controlsDisabled);
+
+  const restartRound = new ButtonBuilder()
+    .setCustomId('cs2_restart_round')
+    .setLabel('Restart Round')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(controlsDisabled);
+
+  const pauseMatch = new ButtonBuilder()
+    .setCustomId('cs2_pause_match')
+    .setLabel('Pause Match')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(controlsDisabled);
+
+  const unpauseMatch = new ButtonBuilder()
+    .setCustomId('cs2_unpause_match')
+    .setLabel('Unpause Match')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(controlsDisabled);
+
+  const restartMatch = new ButtonBuilder()
+    .setCustomId('cs2_restart_match')
+    .setLabel('Restart Match')
+    .setStyle(ButtonStyle.Danger)
+    .setDisabled(controlsDisabled);
+
+  const mapSelect = new StringSelectMenuBuilder()
+    .setCustomId('cs2_map_select')
+    .setPlaceholder('Map Choice')
+    .setDisabled(controlsDisabled)
+    .addOptions(MAP_OPTIONS.map((m) => ({
+      label: m.label,
+      value: m.value,
+    })));
+
+  return [
+    new ActionRowBuilder().addComponents(joinButton, modeButton),
+    new ActionRowBuilder().addComponents(restartRound, pauseMatch, unpauseMatch, restartMatch),
+    new ActionRowBuilder().addComponents(mapSelect),
+  ];
+}
+
+function buildGameModeModal() {
+  const modal = new ModalBuilder()
+    .setCustomId('cs2_game_mode_modal')
+    .setTitle('Set Game Mode');
+
+  const modeInput = new TextInputBuilder()
+    .setCustomId('cs2_mode_preset')
+    .setLabel('Preset name')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('casual, competitive, wingman, deathmatch...')
+    .setRequired(true);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(modeInput));
+  return modal;
+}
+
+function getGuildConfig(guildId) {
+  const data = loadData();
+  return data[guildId] || null;
+}
+
+function hasControlPermission(interaction) {
+  return interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild) || false;
+}
+
 // ── Build the live server status embed ──────────────────────────────────────
 function buildServerEmbed(info, host, port, joinUrl) {
   const connectUrl = joinUrl || buildJoinUrl(host, port);
@@ -175,14 +297,7 @@ function buildServerEmbed(info, host, port, joinUrl) {
     .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 
-  const joinButton = new ButtonBuilder()
-    .setLabel('🟢  Join Server')
-    .setStyle(ButtonStyle.Link)
-    .setURL(connectUrl);
-
-  const row = new ActionRowBuilder().addComponents(joinButton);
-
-  return { embeds: [embed], components: [row] };
+  return { embeds: [embed], components: buildControlRows(connectUrl, false) };
 }
 
 // ── Build an offline embed ───────────────────────────────────────────────────
@@ -196,15 +311,7 @@ function buildOfflineEmbed(host, port, joinUrl) {
     .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 
-  const joinButton = new ButtonBuilder()
-    .setLabel('🔴  Server Offline')
-    .setStyle(ButtonStyle.Link)
-    .setURL(connectUrl)
-    .setDisabled(true);
-
-  const row = new ActionRowBuilder().addComponents(joinButton);
-
-  return { embeds: [embed], components: [row] };
+  return { embeds: [embed], components: buildControlRows(connectUrl, true) };
 }
 
 function buildSetupModal() {
@@ -304,6 +411,102 @@ client.on('interactionCreate', async (interaction) => {
   // ── Open setup modal button ──────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId === 'open_setup_modal') {
     await interaction.showModal(buildSetupModal());
+    return;
+  }
+
+  if (interaction.isButton() && interaction.customId === 'cs2_game_mode_button') {
+    if (!hasControlPermission(interaction)) {
+      await interaction.reply({
+        content: '❌  You need Manage Server permission to control this CS2 server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.showModal(buildGameModeModal());
+    return;
+  }
+
+  if (interaction.isButton() && ['cs2_restart_round', 'cs2_pause_match', 'cs2_unpause_match', 'cs2_restart_match'].includes(interaction.customId)) {
+    if (!hasControlPermission(interaction)) {
+      await interaction.reply({
+        content: '❌  You need Manage Server permission to control this CS2 server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
+      await interaction.reply({
+        content: '❌  Server is not configured in this guild. Run /setup first.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const commandMap = {
+      cs2_restart_round: 'mp_restartround 1',
+      cs2_pause_match: 'mp_pause_match',
+      cs2_unpause_match: 'mp_unpause_match',
+      cs2_restart_match: 'mp_restartgame 5',
+    };
+
+    const labelMap = {
+      cs2_restart_round: 'Restart Round',
+      cs2_pause_match: 'Pause Match',
+      cs2_unpause_match: 'Unpause Match',
+      cs2_restart_match: 'Restart Match',
+    };
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await runRconCommand(config, commandMap[interaction.customId]);
+      await interaction.editReply({ content: `✅  ${labelMap[interaction.customId]} command sent.` });
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌  Failed to send ${labelMap[interaction.customId]} command: ${err?.message || err}`,
+      });
+    }
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId === 'cs2_map_select') {
+    if (!hasControlPermission(interaction)) {
+      await interaction.reply({
+        content: '❌  You need Manage Server permission to control this CS2 server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
+      await interaction.reply({
+        content: '❌  Server is not configured in this guild. Run /setup first.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const selectedMap = interaction.values?.[0];
+    if (!selectedMap) {
+      await interaction.reply({
+        content: '❌  No map selected.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await runRconCommand(config, `changelevel ${selectedMap}`);
+      await interaction.editReply({ content: `✅  Map change command sent: ${selectedMap}` });
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌  Failed to change map: ${err?.message || err}`,
+      });
+    }
     return;
   }
 
@@ -413,6 +616,55 @@ client.on('interactionCreate', async (interaction) => {
       content:
         '✅  Setup complete! The server status panel has been posted above and will refresh every 30 seconds.',
     });
+    return;
+  }
+
+  if (
+    interaction.type === InteractionType.ModalSubmit &&
+    interaction.customId === 'cs2_game_mode_modal'
+  ) {
+    if (!hasControlPermission(interaction)) {
+      await interaction.reply({
+        content: '❌  You need Manage Server permission to control this CS2 server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
+      await interaction.reply({
+        content: '❌  Server is not configured in this guild. Run /setup first.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const presetRaw = interaction.fields.getTextInputValue('cs2_mode_preset').trim().toLowerCase();
+    const preset = GAME_MODE_PRESETS[presetRaw];
+    if (!preset) {
+      await interaction.reply({
+        content: `❌  Unknown game mode preset: ${presetRaw}. Use one of: ${Object.keys(GAME_MODE_PRESETS).join(', ')}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      await runRconCommand(
+        config,
+        `game_type ${preset.gameType}; game_mode ${preset.gameMode}; mp_restartgame 1`
+      );
+      await interaction.editReply({
+        content: `✅  Game mode set to ${preset.label} (game_type ${preset.gameType}, game_mode ${preset.gameMode}).`,
+      });
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌  Failed to set game mode: ${err?.message || err}`,
+      });
+    }
+    return;
   }
   } catch (err) {
     console.error('Interaction handler error:', err);

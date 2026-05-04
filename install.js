@@ -20,7 +20,7 @@ const RESET  = '\x1b[0m';
 function banner() {
   console.log(`
 ${BOLD}${CYAN}╔═══════════════════════════════════════════════════╗
-║        CS2 Server Play Button — Setup Wizard       ║
+║           CS2 Server Bot — Setup Wizard            ║
 ╚═══════════════════════════════════════════════════╝${RESET}
 `);
 }
@@ -157,7 +157,7 @@ async function main() {
 ${BOLD}${BLUE}[ Step 5 ] All done!${RESET}
 ${YELLOW}  ➜  The bot is starting now.${RESET}
 ${YELLOW}  ➜  Go to your Discord server and run /setup to post the server panel.${RESET}
-${YELLOW}  ➜  Next time just run: docker start cs2-play-button${RESET}
+${YELLOW}  ➜  Next time just run: docker start cs2-server-bot${RESET}
 
 ${GREEN}${BOLD}Happy fragging!${RESET}
 `);

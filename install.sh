@@ -10,7 +10,7 @@ RESET='\033[0m'
 
 echo -e "
 ${BOLD}${CYAN}╔═══════════════════════════════════════════════════╗
-║        CS2 Server Play Button — Setup Wizard       ║
+║           CS2 Server Bot — Setup Wizard            ║
 ╚═══════════════════════════════════════════════════╝${RESET}
 "
 
@@ -25,8 +25,8 @@ if ! docker info &>/dev/null; then
   exit 1
 fi
 
-IMAGE="ghcr.io/beaudenison/cs2-server-play-button:latest"
-CONTAINER="cs2-play-button"
+IMAGE="ghcr.io/beaudenison/cs2-server-bot:latest"
+CONTAINER="cs2-server-bot"
 VOLUME="cs2bot_data"
 
 step()    { echo -e "\n${BOLD}${BLUE}[ Step $1 ] $2${RESET}"; }

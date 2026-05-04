@@ -1,4 +1,4 @@
-# CS2 Server Play Button — Discord Bot
+# CS2 Server Bot — Discord Bot
 
 A self-hosted Discord bot that posts a live CS2 status panel in Discord with a join button.
 
@@ -19,6 +19,12 @@ No cloning required. Everything runs from a pre-built Docker image.
 	- Server name
 	- Total players
 	- Join Server button
+	- Game Mode button
+	- Restart Round button
+	- Pause Match button
+	- Unpause Match button
+	- Restart Match button
+	- Map Choice dropdown
 - Auto-refresh every 30 seconds
 - Fallback query logic: GameDig first, RCON `status` fallback if needed
 
@@ -33,14 +39,14 @@ No cloning required. Everything runs from a pre-built Docker image.
 ## Setup — one command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beaudenison/cs2-server-play-button/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/beaudenison/cs2-server-bot/main/install.sh | bash
 ```
 
 That's it. The script will:
 1. Pull the Docker image automatically
 2. Launch an installer wizard for Discord bot credentials
 3. Prompt for your **Application ID** and **Bot Token**
-4. Start the bot container (`cs2-play-button`)
+4. Start the bot container (`cs2-server-bot`)
 
 The bot persists data in Docker volume `cs2bot_data`.
 
@@ -61,6 +67,19 @@ Step 2: Fill the modal:
 | Join Link URL | Yes | `https://dub.sh/your-link` |
 
 Step 3: Submit. The bot posts a live panel in that channel.
+
+### In-panel server controls
+
+Once the live panel is posted, users with **Manage Server** permission can use:
+
+- **Map Choice** dropdown (runs `changelevel <map>`)
+- **Game Mode** button (opens modal preset: `casual`, `competitive`, `wingman`, `deathmatch`, `armsrace`, `demolition`)
+- **Restart Round** button
+- **Pause Match** button
+- **Unpause Match** button
+- **Restart Match** button
+
+Control actions are sent via RCON and return an ephemeral success/failure response.
 
 ### How to create the Join Link URL
 
@@ -83,7 +102,7 @@ steam://run/730//+connect 123.45.67.89:27015
 ## Running after a reboot / restart
 
 ```bash
-docker start cs2-play-button
+docker start cs2-server-bot
 ```
 
 ---
@@ -91,7 +110,7 @@ docker start cs2-play-button
 ## Updating
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/beaudenison/cs2-server-play-button/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/beaudenison/cs2-server-bot/main/install.sh | bash
 ```
 
 Your credentials and server config are preserved in the Docker volume.
@@ -101,7 +120,7 @@ Your credentials and server config are preserved in the Docker volume.
 ## Useful Commands
 
 ```bash
-docker logs -f cs2-play-button
-docker restart cs2-play-button
-docker rm -f cs2-play-button
+docker logs -f cs2-server-bot
+docker restart cs2-server-bot
+docker rm -f cs2-server-bot
 ```

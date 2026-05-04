@@ -27,7 +27,7 @@ function buildJoinUrl(host, port) {
   // Discord link buttons only allow http/https/discord protocols.
   // Open a trusted HTTPS page that immediately redirects to steam://connect.
   const addr = `${host}:${port}`;
-  return `https://cdn.jsdelivr.net/gh/beaudenison/cs2-server-play-button@main/join.html?addr=${encodeURIComponent(addr)}`;
+  return `https://rawcdn.githack.com/beaudenison/cs2-server-play-button/main/join.html?addr=${encodeURIComponent(addr)}`;
 }
 
 // ── Persistence (stores server config + live message refs per guild) ────────

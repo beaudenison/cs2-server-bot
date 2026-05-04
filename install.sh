@@ -8,10 +8,6 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 RESET='\033[0m'
 
-# Reconnect stdin to the real terminal when piped via curl | bash
-# Non-fatal: if /dev/tty isn't available we continue anyway
-exec < /dev/tty 2>/dev/null || true
-
 echo -e "
 ${BOLD}${CYAN}╔═══════════════════════════════════════════════════╗
 ║        CS2 Server Play Button — Setup Wizard       ║

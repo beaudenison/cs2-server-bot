@@ -20,6 +20,7 @@ const {
 } = require('discord.js');
 
 const { GameDig } = require('gamedig');
+const { Rcon } = require('rcon-client');
 const fs = require('fs');
 
 function buildJoinUrl(host, port) {
@@ -90,6 +91,59 @@ async function queryServer(host, port) {
     maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : 0,
     raw: result,
   };
+}
+
+function parseRconStatus(statusText, host, port) {
+  const hostnameMatch = statusText.match(/hostname\s*:\s*(.+)/i);
+  const mapMatch = statusText.match(/map\s*:\s*([^\s]+)/i);
+  const playersMatch = statusText.match(/players\s*:\s*(\d+)\s*humans?.*?\((\d+)\s*max\)/i);
+
+  const name = hostnameMatch?.[1]?.trim() || `CS2 Server (${host}:${port})`;
+  const map = mapMatch?.[1]?.trim() || 'Unknown Map';
+  const players = playersMatch ? Number(playersMatch[1]) : 0;
+  const maxPlayers = playersMatch ? Number(playersMatch[2]) : 0;
+
+  return {
+    name,
+    map,
+    players,
+    maxPlayers,
+    raw: { source: 'rcon', statusText },
+  };
+}
+
+async function queryViaRcon(host, port, rconPassword) {
+  if (!rconPassword) {
+    throw new Error('No RCON password configured for fallback');
+  }
+
+  const rcon = await Rcon.connect({
+    host,
+    port: Number(port),
+    password: rconPassword,
+    timeout: 5000,
+  });
+
+  try {
+    const statusText = await rcon.send('status');
+    return parseRconStatus(String(statusText || ''), host, port);
+  } finally {
+    await rcon.end().catch(() => {});
+  }
+}
+
+async function queryServerWithFallback(host, port, rconPassword) {
+  try {
+    return await queryServer(host, port);
+  } catch (gameDigErr) {
+    try {
+      return await queryViaRcon(host, port, rconPassword);
+    } catch (rconErr) {
+      throw new Error(
+        `GameDig failed (${gameDigErr?.message || gameDigErr}); RCON failed (${rconErr?.message || rconErr})`
+      );
+    }
+  }
 }
 
 // ── Build the live server status embed ──────────────────────────────────────
@@ -186,7 +240,7 @@ function startRefreshLoop() {
 
         let payload;
         try {
-          const info = await queryServer(config.host, config.port);
+          const info = await queryServerWithFallback(config.host, config.port, config.rcon || null);
           payload = buildServerEmbed(info, config.host, config.port);
         } catch {
           payload = buildOfflineEmbed(config.host, config.port);
@@ -270,7 +324,7 @@ client.on('interactionCreate', async (interaction) => {
     let serverInfo;
     let payload;
     try {
-      serverInfo = await queryServer(host, port);
+      serverInfo = await queryServerWithFallback(host, port, rcon || null);
       payload = buildServerEmbed(serverInfo, host, port);
     } catch (err) {
       console.error(`Initial server query failed for ${host}:${port}:`, err?.message || err);

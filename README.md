@@ -11,11 +11,11 @@ No cloning required. Everything runs from a pre-built Docker image.
 - One-command install and update via `curl | bash`
 - Interactive Docker installer asks for Discord App ID + Bot Token
 - `/setup` creates a live status panel in the channel where you run it
+- `/setup` first asks which role is allowed to use server controls
 - Setup modal fields:
 	- Server Address (`IP:PORT`)
 	- RCON Password (required)
 	- Join Link URL (required, your Dub short link)
-	- Allowed Control Role (required, role ID or @role mention)
 - Status panel shows:
 	- Server name
 	- Total players
@@ -56,18 +56,18 @@ The bot persists data in Docker volume `cs2bot_data`.
 
 After the bot is online, run `/setup` in your Discord server.
 
-Step 1: Read the ephemeral instructions and click **Open Setup Form**.
+Step 1: Choose the Discord role that is allowed to use server controls.
 
-Step 2: Fill the modal:
+Step 2: After selecting the role, read the ephemeral instructions and click **Open Setup Form**.
+
+Step 3: Fill the modal:
 
 | Field | Required | Example |
 |---|---|---|
 | Server Address (IP:PORT) | Yes | `123.45.67.89:27015` |
 | RCON Password | Yes | `my-rcon-password` |
 | Join Link URL | Yes | `https://dub.sh/your-link` |
-| Allowed Control Role | Yes | `<@&123456789012345678>` |
-
-Step 3: Submit. The bot posts a live panel in that channel.
+Step 4: Submit. The bot posts a live panel in that channel.
 
 ### In-panel server controls
 

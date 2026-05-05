@@ -16,6 +16,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
+  RoleSelectMenuBuilder,
   PermissionsBitField,
   InteractionType,
   MessageFlags,
@@ -52,6 +53,8 @@ const GAME_MODE_PRESETS = {
   armsrace: { gameType: 1, gameMode: 0, label: 'Arms Race' },
   demolition: { gameType: 1, gameMode: 1, label: 'Demolition' },
 };
+
+const pendingSetupRoleByGuildUser = new Map();
 
 // ── Persistence (stores server config + live message refs per guild) ────────
 const DATA_FILE = '/data/data.json';
@@ -213,18 +216,6 @@ function getMapLabel(mapValue) {
   return MAP_OPTIONS.find((mapOption) => mapOption.value === mapValue)?.label || mapValue || 'Map Choice';
 }
 
-function parseRoleId(input) {
-  const raw = String(input || '').trim();
-  const mentionMatch = raw.match(/^<@&(\d{17,20})>$/);
-  if (mentionMatch) {
-    return mentionMatch[1];
-  }
-  if (/^\d{17,20}$/.test(raw)) {
-    return raw;
-  }
-  return null;
-}
-
 function buildControlRows(joinUrl, controlsDisabled, selectedMap, isMatchPaused = false) {
   const joinButton = new ButtonBuilder()
     .setLabel(controlsDisabled ? '🔴  Server Offline' : '🟢  Join Server')
@@ -380,18 +371,10 @@ function buildSetupModal() {
     .setPlaceholder('Paste your Dub short link (https://...)')
     .setRequired(true);
 
-  const allowedRoleInput = new TextInputBuilder()
-    .setCustomId('cs2_allowed_role')
-    .setLabel('Allowed Control Role (ID or @mention)')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('Example: 123456789012345678 or <@&123...>')
-    .setRequired(true);
-
   modal.addComponents(
     new ActionRowBuilder().addComponents(addressInput),
     new ActionRowBuilder().addComponents(rconInput),
     new ActionRowBuilder().addComponents(joinLinkInput),
-    new ActionRowBuilder().addComponents(allowedRoleInput),
   );
 
   return modal;
@@ -471,7 +454,50 @@ client.on('interactionCreate', async (interaction) => {
   try {
   // ── Open setup modal button ──────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId === 'open_setup_modal') {
+    const pendingSetupRoleKey = `${interaction.guildId}:${interaction.user.id}`;
+    const allowedRoleId = pendingSetupRoleByGuildUser.get(pendingSetupRoleKey);
+    if (!allowedRoleId) {
+      await interaction.reply({
+        content: '❌  Choose the allowed control role first by running /setup again.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await interaction.showModal(buildSetupModal());
+    return;
+  }
+
+  if (interaction.isRoleSelectMenu() && interaction.customId === 'cs2_setup_allowed_role_select') {
+    const allowedRoleId = interaction.values?.[0];
+    if (!allowedRoleId) {
+      await interaction.reply({
+        content: '❌  No role selected. Please select a role to continue setup.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const pendingSetupRoleKey = `${interaction.guildId}:${interaction.user.id}`;
+    pendingSetupRoleByGuildUser.set(pendingSetupRoleKey, allowedRoleId);
+
+    const openButton = new ButtonBuilder()
+      .setCustomId('open_setup_modal')
+      .setLabel('Open Setup Form')
+      .setStyle(ButtonStyle.Primary);
+
+    const row = new ActionRowBuilder().addComponents(openButton);
+
+    await interaction.update({
+      content:
+        `✅  Control role set to <@&${allowedRoleId}>.\n\n` +
+        'Before filling Join Link URL:\n' +
+        '1) Go to https://app.dub.co/ and create a short link.\n' +
+        '2) Destination must be: steam://run/730//+connect <IP:PORT>\n' +
+        '3) Example destination: steam://run/730//+connect 123.45.67.89:27015\n\n' +
+        'Click **Open Setup Form** below.',
+      components: [row],
+    });
     return;
   }
 
@@ -602,21 +628,21 @@ client.on('interactionCreate', async (interaction) => {
 
   // ── /setup command → show modal ──────────────────────────────────────────
   if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
-    const openButton = new ButtonBuilder()
-      .setCustomId('open_setup_modal')
-      .setLabel('Open Setup Form')
-      .setStyle(ButtonStyle.Primary);
+    const roleSelect = new RoleSelectMenuBuilder()
+      .setCustomId('cs2_setup_allowed_role_select')
+      .setPlaceholder('Select the role allowed to control the server')
+      .setMinValues(1)
+      .setMaxValues(1);
 
-    const row = new ActionRowBuilder().addComponents(openButton);
+    const row = new ActionRowBuilder().addComponents(roleSelect);
+
+    const pendingSetupRoleKey = `${interaction.guildId}:${interaction.user.id}`;
+    pendingSetupRoleByGuildUser.delete(pendingSetupRoleKey);
 
     await interaction.reply({
       content:
-        'Before filling Join Link URL:\n' +
-        '1) Go to https://app.dub.co and create a short link.\n' +
-        '2) Destination must be: steam://run/730//+connect <IP:PORT>\n' +
-        '3) Example destination: steam://run/730//+connect 123.45.67.89:27015\n' +
-        '4) You will choose which Discord role can use server controls.\n\n' +
-        'Click **Open Setup Form** below.',
+        'Step 1: Choose which Discord role is allowed to use server controls.\n\n' +
+        'After selecting the role, I will send the setup instructions and setup form button.',
       flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds,
       components: [row],
     });
@@ -631,8 +657,8 @@ client.on('interactionCreate', async (interaction) => {
     const address = interaction.fields.getTextInputValue('cs2_address').trim();
     const rcon = interaction.fields.getTextInputValue('cs2_rcon').trim();
     const joinUrl = interaction.fields.getTextInputValue('cs2_join_link').trim();
-    const allowedRoleRaw = interaction.fields.getTextInputValue('cs2_allowed_role').trim();
-    const allowedRoleId = parseRoleId(allowedRoleRaw);
+    const pendingSetupRoleKey = `${interaction.guildId}:${interaction.user.id}`;
+    const allowedRoleId = pendingSetupRoleByGuildUser.get(pendingSetupRoleKey);
 
     const addressMatch = address.match(/^(.+):(\d{1,5})$/);
     if (!addressMatch) {
@@ -672,7 +698,7 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!allowedRoleId) {
       await interaction.reply({
-        content: '❌  Allowed Control Role must be a role ID or role mention like <@&123456789012345678>.',
+        content: '❌  Allowed control role is missing. Run /setup and choose a role first.',
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -723,6 +749,7 @@ client.on('interactionCreate', async (interaction) => {
       messageId: statusMessage.id,
     };
     saveData(data);
+    pendingSetupRoleByGuildUser.delete(pendingSetupRoleKey);
 
     await interaction.editReply({
       content:

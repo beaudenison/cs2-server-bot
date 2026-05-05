@@ -213,24 +213,16 @@ function getMapLabel(mapValue) {
   return MAP_OPTIONS.find((mapOption) => mapOption.value === mapValue)?.label || mapValue || 'Map Choice';
 }
 
-function updateMapEmbed(existingEmbed, selectedMap) {
-  if (!existingEmbed) {
-    return null;
+function parseRoleId(input) {
+  const raw = String(input || '').trim();
+  const mentionMatch = raw.match(/^<@&(\d{17,20})>$/);
+  if (mentionMatch) {
+    return mentionMatch[1];
   }
-
-  const nextEmbed = EmbedBuilder.from(existingEmbed);
-  const nextFields = (existingEmbed.fields || []).map((field) => ({ ...field }));
-  const mapFieldIndex = nextFields.findIndex((field) => field.name === '🗺️  Current Map');
-  const nextMapValue = getMapLabel(selectedMap);
-
-  if (mapFieldIndex >= 0) {
-    nextFields[mapFieldIndex].value = nextMapValue;
-  } else {
-    nextFields.push({ name: '🗺️  Current Map', value: nextMapValue, inline: true });
+  if (/^\d{17,20}$/.test(raw)) {
+    return raw;
   }
-
-  nextEmbed.setFields(nextFields);
-  return nextEmbed;
+  return null;
 }
 
 function buildControlRows(joinUrl, controlsDisabled, selectedMap, isMatchPaused = false) {
@@ -302,8 +294,29 @@ function getGuildConfig(guildId) {
   return data[guildId] || null;
 }
 
-function hasControlPermission(interaction) {
-  return interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild) || false;
+function hasControlPermission(interaction, config) {
+  if (interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+    return true;
+  }
+
+  const allowedRoleId = config?.allowedRoleId;
+  if (!allowedRoleId) {
+    return false;
+  }
+
+  const memberRoles = interaction.member?.roles;
+  if (Array.isArray(memberRoles)) {
+    return memberRoles.includes(allowedRoleId);
+  }
+
+  return memberRoles?.cache?.has(allowedRoleId) || false;
+}
+
+function buildPermissionDeniedMessage(config) {
+  if (config?.allowedRoleId) {
+    return `❌  You need the <@&${config.allowedRoleId}> role (or Manage Server permission) to control this CS2 server.`;
+  }
+  return '❌  You need Manage Server permission to control this CS2 server.';
 }
 
 // ── Build the live server status embed ──────────────────────────────────────
@@ -318,11 +331,6 @@ function buildServerEmbed(info, host, port, joinUrl, isMatchPaused = false) {
       {
         name: '👥  Total Players',
         value: `${info.players}`,
-        inline: true,
-      },
-      {
-        name: '🗺️  Current Map',
-        value: getMapLabel(info.map),
         inline: true,
       },
     )
@@ -372,10 +380,18 @@ function buildSetupModal() {
     .setPlaceholder('Paste your Dub short link (https://...)')
     .setRequired(true);
 
+  const allowedRoleInput = new TextInputBuilder()
+    .setCustomId('cs2_allowed_role')
+    .setLabel('Allowed Control Role (ID or @mention)')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('Example: 123456789012345678 or <@&123...>')
+    .setRequired(true);
+
   modal.addComponents(
     new ActionRowBuilder().addComponents(addressInput),
     new ActionRowBuilder().addComponents(rconInput),
     new ActionRowBuilder().addComponents(joinLinkInput),
+    new ActionRowBuilder().addComponents(allowedRoleInput),
   );
 
   return modal;
@@ -460,9 +476,18 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.isButton() && interaction.customId === 'cs2_game_mode_button') {
-    if (!hasControlPermission(interaction)) {
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
       await interaction.reply({
-        content: '❌  You need Manage Server permission to control this CS2 server.',
+        content: '❌  Server is not configured in this guild. Run /setup first.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (!hasControlPermission(interaction, config)) {
+      await interaction.reply({
+        content: buildPermissionDeniedMessage(config),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -473,18 +498,18 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.isButton() && ['cs2_restart_round', 'cs2_toggle_pause_match', 'cs2_restart_match'].includes(interaction.customId)) {
-    if (!hasControlPermission(interaction)) {
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
       await interaction.reply({
-        content: '❌  You need Manage Server permission to control this CS2 server.',
+        content: '❌  Server is not configured in this guild. Run /setup first.',
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const config = getGuildConfig(interaction.guildId);
-    if (!config) {
+    if (!hasControlPermission(interaction, config)) {
       await interaction.reply({
-        content: '❌  Server is not configured in this guild. Run /setup first.',
+        content: buildPermissionDeniedMessage(config),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -528,18 +553,18 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.isStringSelectMenu() && interaction.customId === 'cs2_map_select') {
-    if (!hasControlPermission(interaction)) {
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
       await interaction.reply({
-        content: '❌  You need Manage Server permission to control this CS2 server.',
+        content: '❌  Server is not configured in this guild. Run /setup first.',
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const config = getGuildConfig(interaction.guildId);
-    if (!config) {
+    if (!hasControlPermission(interaction, config)) {
       await interaction.reply({
-        content: '❌  Server is not configured in this guild. Run /setup first.',
+        content: buildPermissionDeniedMessage(config),
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -558,9 +583,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
       await runRconCommand(config, `changelevel ${selectedMap}`);
       updateGuildConfig(interaction.guildId, { selectedMap });
-      const updatedEmbed = updateMapEmbed(interaction.message.embeds?.[0], selectedMap);
       await interaction.message.edit({
-        ...(updatedEmbed ? { embeds: [updatedEmbed] } : {}),
         components: buildControlRows(
           config.joinUrl || buildJoinUrl(config.host, config.port),
           false,
@@ -591,7 +614,8 @@ client.on('interactionCreate', async (interaction) => {
         'Before filling Join Link URL:\n' +
         '1) Go to https://app.dub.co and create a short link.\n' +
         '2) Destination must be: steam://run/730//+connect <IP:PORT>\n' +
-        '3) Example destination: steam://run/730//+connect 123.45.67.89:27015\n\n' +
+        '3) Example destination: steam://run/730//+connect 123.45.67.89:27015\n' +
+        '4) You will choose which Discord role can use server controls.\n\n' +
         'Click **Open Setup Form** below.',
       flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds,
       components: [row],
@@ -607,6 +631,8 @@ client.on('interactionCreate', async (interaction) => {
     const address = interaction.fields.getTextInputValue('cs2_address').trim();
     const rcon = interaction.fields.getTextInputValue('cs2_rcon').trim();
     const joinUrl = interaction.fields.getTextInputValue('cs2_join_link').trim();
+    const allowedRoleRaw = interaction.fields.getTextInputValue('cs2_allowed_role').trim();
+    const allowedRoleId = parseRoleId(allowedRoleRaw);
 
     const addressMatch = address.match(/^(.+):(\d{1,5})$/);
     if (!addressMatch) {
@@ -644,6 +670,23 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    if (!allowedRoleId) {
+      await interaction.reply({
+        content: '❌  Allowed Control Role must be a role ID or role mention like <@&123456789012345678>.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const allowedRole = await interaction.guild?.roles.fetch(allowedRoleId).catch(() => null);
+    if (!allowedRole) {
+      await interaction.reply({
+        content: '❌  That role was not found in this server. Use a valid role ID or mention from this server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Fetch the channel explicitly — interaction.channel can be null from a modal
@@ -674,6 +717,7 @@ client.on('interactionCreate', async (interaction) => {
       port: Number(port),
       rcon: rcon || null,
       joinUrl,
+      allowedRoleId,
       selectedMap: serverInfo?.map || null,
       channelId: interaction.channelId,
       messageId: statusMessage.id,
@@ -691,18 +735,18 @@ client.on('interactionCreate', async (interaction) => {
     interaction.type === InteractionType.ModalSubmit &&
     interaction.customId === 'cs2_game_mode_modal'
   ) {
-    if (!hasControlPermission(interaction)) {
+    const config = getGuildConfig(interaction.guildId);
+    if (!config) {
       await interaction.reply({
-        content: '❌  You need Manage Server permission to control this CS2 server.',
+        content: '❌  Server is not configured in this guild. Run /setup first.',
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    const config = getGuildConfig(interaction.guildId);
-    if (!config) {
+    if (!hasControlPermission(interaction, config)) {
       await interaction.reply({
-        content: '❌  Server is not configured in this guild. Run /setup first.',
+        content: buildPermissionDeniedMessage(config),
         flags: MessageFlags.Ephemeral,
       });
       return;

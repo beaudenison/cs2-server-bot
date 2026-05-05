@@ -15,10 +15,10 @@ No cloning required. Everything runs from a pre-built Docker image.
 	- Server Address (`IP:PORT`)
 	- RCON Password (required)
 	- Join Link URL (required, your Dub short link)
+	- Allowed Control Role (required, role ID or @role mention)
 - Status panel shows:
 	- Server name
 	- Total players
-	- Current map
 	- Join Server button
 	- Game Mode button
 	- Restart Round button
@@ -65,12 +65,13 @@ Step 2: Fill the modal:
 | Server Address (IP:PORT) | Yes | `123.45.67.89:27015` |
 | RCON Password | Yes | `my-rcon-password` |
 | Join Link URL | Yes | `https://dub.sh/your-link` |
+| Allowed Control Role | Yes | `<@&123456789012345678>` |
 
 Step 3: Submit. The bot posts a live panel in that channel.
 
 ### In-panel server controls
 
-Once the live panel is posted, users with **Manage Server** permission can use:
+Once the live panel is posted, only users with the configured **Allowed Control Role** (or **Manage Server** permission) can use:
 
 - **Map dropdown** (runs `changelevel <map>`, includes Cache, and keeps the current map visible in the selector)
 - **Game Mode** button (opens modal preset: `casual`, `competitive`, `wingman`, `deathmatch`, `armsrace`, `demolition`)

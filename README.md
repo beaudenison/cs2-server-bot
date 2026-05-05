@@ -18,13 +18,13 @@ No cloning required. Everything runs from a pre-built Docker image.
 - Status panel shows:
 	- Server name
 	- Total players
+	- Current map
 	- Join Server button
 	- Game Mode button
 	- Restart Round button
-	- Pause Match button
-	- Unpause Match button
+	- Pause/Unpause toggle button
 	- Restart Match button
-	- Map Choice dropdown
+	- Map dropdown with current selection retained
 - Auto-refresh every 30 seconds
 - Fallback query logic: GameDig first, RCON `status` fallback if needed
 
@@ -72,11 +72,10 @@ Step 3: Submit. The bot posts a live panel in that channel.
 
 Once the live panel is posted, users with **Manage Server** permission can use:
 
-- **Map Choice** dropdown (runs `changelevel <map>`)
+- **Map dropdown** (runs `changelevel <map>`, includes Cache, and keeps the current map visible in the selector)
 - **Game Mode** button (opens modal preset: `casual`, `competitive`, `wingman`, `deathmatch`, `armsrace`, `demolition`)
 - **Restart Round** button
-- **Pause Match** button
-- **Unpause Match** button
+- **Pause/Unpause** toggle button
 - **Restart Match** button
 
 Control actions are sent via RCON and return an ephemeral success/failure response.

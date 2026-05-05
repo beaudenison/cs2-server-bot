@@ -32,6 +32,7 @@ function buildJoinUrl(host, port) {
 const MAP_OPTIONS = [
   { label: 'Ancient', value: 'de_ancient' },
   { label: 'Anubis', value: 'de_anubis' },
+  { label: 'Cache', value: 'de_cache' },
   { label: 'Dust II', value: 'de_dust2' },
   { label: 'Inferno', value: 'de_inferno' },
   { label: 'Mirage', value: 'de_mirage' },
@@ -65,6 +66,13 @@ function loadData() {
 
 function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+function updateGuildConfig(guildId, updates) {
+  const data = loadData();
+  data[guildId] = { ...(data[guildId] || {}), ...updates };
+  saveData(data);
+  return data[guildId];
 }
 
 // ── Query a CS2 server via Source query protocol ────────────────────────────
@@ -201,7 +209,31 @@ async function runRconCommand(config, command) {
   }
 }
 
-function buildControlRows(joinUrl, controlsDisabled) {
+function getMapLabel(mapValue) {
+  return MAP_OPTIONS.find((mapOption) => mapOption.value === mapValue)?.label || mapValue || 'Map Choice';
+}
+
+function updateMapEmbed(existingEmbed, selectedMap) {
+  if (!existingEmbed) {
+    return null;
+  }
+
+  const nextEmbed = EmbedBuilder.from(existingEmbed);
+  const nextFields = (existingEmbed.fields || []).map((field) => ({ ...field }));
+  const mapFieldIndex = nextFields.findIndex((field) => field.name === '🗺️  Current Map');
+  const nextMapValue = getMapLabel(selectedMap);
+
+  if (mapFieldIndex >= 0) {
+    nextFields[mapFieldIndex].value = nextMapValue;
+  } else {
+    nextFields.push({ name: '🗺️  Current Map', value: nextMapValue, inline: true });
+  }
+
+  nextEmbed.setFields(nextFields);
+  return nextEmbed;
+}
+
+function buildControlRows(joinUrl, controlsDisabled, selectedMap, isMatchPaused = false) {
   const joinButton = new ButtonBuilder()
     .setLabel(controlsDisabled ? '🔴  Server Offline' : '🟢  Join Server')
     .setStyle(ButtonStyle.Link)
@@ -220,15 +252,9 @@ function buildControlRows(joinUrl, controlsDisabled) {
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(controlsDisabled);
 
-  const pauseMatch = new ButtonBuilder()
-    .setCustomId('cs2_pause_match')
-    .setLabel('Pause Match')
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(controlsDisabled);
-
-  const unpauseMatch = new ButtonBuilder()
-    .setCustomId('cs2_unpause_match')
-    .setLabel('Unpause Match')
+  const togglePauseMatch = new ButtonBuilder()
+    .setCustomId('cs2_toggle_pause_match')
+    .setLabel(isMatchPaused ? 'Unpause Match' : 'Pause Match')
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(controlsDisabled);
 
@@ -240,16 +266,17 @@ function buildControlRows(joinUrl, controlsDisabled) {
 
   const mapSelect = new StringSelectMenuBuilder()
     .setCustomId('cs2_map_select')
-    .setPlaceholder('Map Choice')
+    .setPlaceholder(getMapLabel(selectedMap))
     .setDisabled(controlsDisabled)
     .addOptions(MAP_OPTIONS.map((m) => ({
       label: m.label,
       value: m.value,
+      default: m.value === selectedMap,
     })));
 
   return [
     new ActionRowBuilder().addComponents(joinButton, modeButton),
-    new ActionRowBuilder().addComponents(restartRound, pauseMatch, unpauseMatch, restartMatch),
+    new ActionRowBuilder().addComponents(restartRound, togglePauseMatch, restartMatch),
     new ActionRowBuilder().addComponents(mapSelect),
   ];
 }
@@ -280,7 +307,7 @@ function hasControlPermission(interaction) {
 }
 
 // ── Build the live server status embed ──────────────────────────────────────
-function buildServerEmbed(info, host, port, joinUrl) {
+function buildServerEmbed(info, host, port, joinUrl, isMatchPaused = false) {
   const connectUrl = joinUrl || buildJoinUrl(host, port);
 
   const embed = new EmbedBuilder()
@@ -293,15 +320,20 @@ function buildServerEmbed(info, host, port, joinUrl) {
         value: `${info.players}`,
         inline: true,
       },
+      {
+        name: '🗺️  Current Map',
+        value: getMapLabel(info.map),
+        inline: true,
+      },
     )
     .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 
-  return { embeds: [embed], components: buildControlRows(connectUrl, false) };
+  return { embeds: [embed], components: buildControlRows(connectUrl, false, info.map, isMatchPaused) };
 }
 
 // ── Build an offline embed ───────────────────────────────────────────────────
-function buildOfflineEmbed(host, port, joinUrl) {
+function buildOfflineEmbed(host, port, joinUrl, selectedMap, isMatchPaused = false) {
   const connectUrl = joinUrl || buildJoinUrl(host, port);
 
   const embed = new EmbedBuilder()
@@ -311,7 +343,7 @@ function buildOfflineEmbed(host, port, joinUrl) {
     .setFooter({ text: 'Updates every 30 seconds' })
     .setTimestamp();
 
-  return { embeds: [embed], components: buildControlRows(connectUrl, true) };
+  return { embeds: [embed], components: buildControlRows(connectUrl, true, selectedMap, isMatchPaused) };
 }
 
 function buildSetupModal() {
@@ -393,9 +425,22 @@ function startRefreshLoop() {
         let payload;
         try {
           const info = await queryServerWithFallback(config.host, config.port, config.rcon || null);
-          payload = buildServerEmbed(info, config.host, config.port, config.joinUrl || null);
+          payload = buildServerEmbed(
+            info,
+            config.host,
+            config.port,
+            config.joinUrl || null,
+            Boolean(config.isMatchPaused),
+          );
+          updateGuildConfig(guildId, { selectedMap: info.map });
         } catch {
-          payload = buildOfflineEmbed(config.host, config.port, config.joinUrl || null);
+          payload = buildOfflineEmbed(
+            config.host,
+            config.port,
+            config.joinUrl || null,
+            config.selectedMap,
+            Boolean(config.isMatchPaused),
+          );
         }
         await message.edit(payload);
       } catch (err) {
@@ -427,7 +472,7 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
-  if (interaction.isButton() && ['cs2_restart_round', 'cs2_pause_match', 'cs2_unpause_match', 'cs2_restart_match'].includes(interaction.customId)) {
+  if (interaction.isButton() && ['cs2_restart_round', 'cs2_toggle_pause_match', 'cs2_restart_match'].includes(interaction.customId)) {
     if (!hasControlPermission(interaction)) {
       await interaction.reply({
         content: '❌  You need Manage Server permission to control this CS2 server.',
@@ -447,21 +492,32 @@ client.on('interactionCreate', async (interaction) => {
 
     const commandMap = {
       cs2_restart_round: 'mp_restartround 1',
-      cs2_pause_match: 'mp_pause_match',
-      cs2_unpause_match: 'mp_unpause_match',
+      cs2_toggle_pause_match: config.isMatchPaused ? 'mp_unpause_match' : 'mp_pause_match',
       cs2_restart_match: 'mp_restartgame 5',
     };
 
     const labelMap = {
       cs2_restart_round: 'Restart Round',
-      cs2_pause_match: 'Pause Match',
-      cs2_unpause_match: 'Unpause Match',
+      cs2_toggle_pause_match: config.isMatchPaused ? 'Unpause Match' : 'Pause Match',
       cs2_restart_match: 'Restart Match',
     };
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await runRconCommand(config, commandMap[interaction.customId]);
+      if (interaction.customId === 'cs2_toggle_pause_match') {
+        const nextPausedState = !Boolean(config.isMatchPaused);
+        updateGuildConfig(interaction.guildId, { isMatchPaused: nextPausedState });
+        const nextMap = config.selectedMap || interaction.message?.components?.[2]?.components?.[0]?.options?.find((option) => option.default)?.value;
+        await interaction.message.edit({
+          components: buildControlRows(
+            config.joinUrl || buildJoinUrl(config.host, config.port),
+            false,
+            nextMap,
+            nextPausedState,
+          ),
+        });
+      }
       await interaction.editReply({ content: `✅  ${labelMap[interaction.customId]} command sent.` });
     } catch (err) {
       await interaction.editReply({
@@ -501,6 +557,17 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       await runRconCommand(config, `changelevel ${selectedMap}`);
+      updateGuildConfig(interaction.guildId, { selectedMap });
+      const updatedEmbed = updateMapEmbed(interaction.message.embeds?.[0], selectedMap);
+      await interaction.message.edit({
+        ...(updatedEmbed ? { embeds: [updatedEmbed] } : {}),
+        components: buildControlRows(
+          config.joinUrl || buildJoinUrl(config.host, config.port),
+          false,
+          selectedMap,
+          Boolean(config.isMatchPaused),
+        ),
+      });
       await interaction.editReply({ content: `✅  Map change command sent: ${selectedMap}` });
     } catch (err) {
       await interaction.editReply({
@@ -607,6 +674,7 @@ client.on('interactionCreate', async (interaction) => {
       port: Number(port),
       rcon: rcon || null,
       joinUrl,
+      selectedMap: serverInfo?.map || null,
       channelId: interaction.channelId,
       messageId: statusMessage.id,
     };

@@ -64,9 +64,10 @@ EXISTING_TOKEN=$(grep -s 'DISCORD_TOKEN' "${TMPDIR_CHECK}/.env" | cut -d= -f2)
 rm -rf "$TMPDIR_CHECK"
 
 if [ -n "$EXISTING_TOKEN" ]; then
-  echo -e "${GREEN}${BOLD}✔  Existing configuration found — skipping wizard.${RESET}"
-else
-  # ── Step 1 ───────────────────────────────────────────────────────────────
+  info "Existing configuration detected. The wizard will run and overwrite saved credentials."
+fi
+
+# ── Step 1 ───────────────────────────────────────────────────────────────
   step 1 "Create a Discord Application"
   info "Open this URL in your browser:"
   echo -e "\n  ${CYAN}https://discord.com/developers/applications${RESET}\n"
@@ -121,7 +122,6 @@ else
   rm -f "$TMPENV"
 
   success "Credentials saved!"
-fi
 
 # ── Pull & start ──────────────────────────────────────────────────────────────
 echo -e "\n${YELLOW}  ➜  Pulling latest image...${RESET}"
